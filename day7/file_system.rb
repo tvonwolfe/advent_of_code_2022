@@ -10,21 +10,15 @@ class FileSystem
     @current_directory = root
   end
 
-  def create_file(filename, size, directory_name)
-    directory_node = find_directory(directory_name)
-    raise FileNotFoundError, "directory #{directory_name} not found" if directory_node.nil?
-
-    new_node = directory_node.add_child(filename, size: size)
+  def create_file(filename, size)
+    new_node = current_directory.add_child(filename, size: size)
     nodes.push(new_node)
 
     new_node
   end
 
-  def create_directory(directory_name, _parent_directory_name)
-    directory_node = find_directory(directory_name)
-    raise FileNotFoundError, "directory #{directory_name} not found" if directory_node.nil?
-
-    new_node = directory_node.add_child(filename)
+  def create_directory(directory_name)
+    new_node = current_directory.add_child(directory_name)
     nodes.push(new_node)
 
     new_node
@@ -33,7 +27,7 @@ class FileSystem
   # @param name [String] - name of directory to find
   # @return [Node] - the directory node
   def find_directory(name)
-    directories.find { |dir| dir.name == name }
+    current_directory.children.select(&:directory?).find { |dir| dir.name == name }
   end
 
   def find_file(name)
@@ -41,18 +35,18 @@ class FileSystem
   end
 
   def change_directory(name)
-    current_directory = if name == '..'
-                          current_directory.parent
-                        else
-                          find_or_create_directory(name)
-                        end
+    @current_directory = if name == '..'
+                           current_directory.parent
+                         else
+                           find_or_create_directory(name)
+                         end
   end
 
-  private
-
-  attr_reader :root, :nodes
-
-  attr_accessor :current_directory
+  def directory_sizes
+    directories.map do |d|
+      Node.calculated_size(d)
+    end
+  end
 
   # @return [Array<Node>] - array of directory nodes
   def directories
@@ -63,6 +57,12 @@ class FileSystem
   def files
     nodes.select(&:file?)
   end
+
+  attr_reader :current_directory, :root
+
+  private
+
+  attr_reader :nodes
 
   def find_or_create_directory(name)
     find_directory(name) || create_directory(name)
@@ -93,8 +93,15 @@ class FileSystem
       !file?
     end
 
-    private
+    attr_reader :name, :size, :parent, :children
 
-    attr_reader :parent, :children, :name, :size
+    def self.calculated_size(node)
+      return 0 if node.children.empty?
+
+      node.children.select(&:file?).sum(&:size) +
+        node.children.select(&:directory?).reduce(0) do |sum, d|
+          sum + calculated_size(d)
+        end
+    end
   end
 end
